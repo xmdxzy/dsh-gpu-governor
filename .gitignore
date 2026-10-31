@@ -1,0 +1,10 @@
+# 构建产物（本仓库即手工维护的发行版，无构建步骤）
+node_modules/
+dist/
+*.log
+
+# 系统/编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
