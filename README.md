@@ -1,161 +1,27 @@
-# 显卡雷达 GPU Radar
+# GPU Radar — DSH plugin
 
-一个 DSH 插件。输入框左侧有个小徽标，显示显卡、显存、处理器的当前读数。点开是浮层，显存占用按项目归组，
-点进项目可以看到它起了哪些进程、在跑什么任务、挂着哪些模型，可以对进程做暂停、恢复、结束，也能给项目设显存预算。
+A DSH plugin that answers one question: **who is using this machine's GPU, and which model or job owns that memory.**
 
-![功能演示](assets/demo.gif)
+A small badge sits to the left of the input box with live GPU / VRAM / CPU readings. Click it and a panel opens: VRAM is grouped by **project**, and each project drills down into its processes, the models it has loaded and the jobs it is running. From there you can pause, resume or kill processes, and pin a VRAM budget per project.
 
-## 功能
+![The panel in English](assets/panel-en.png)
 
-- 三块圆表：显卡利用率、显存占用、处理器利用率，每块底下带一条 0–100% 的迷你走势
-- 内存占用条，每个核心一根负载柱
-- 项目排行按显存降序，每行两条进度（显存、处理器），可切换按处理器或内存排序
-- 项目详情：成员进程、显存、处理器、内存、峰值；运行概况；在用的模型；正在跑的任务
-- 进程管控：暂停、恢复、结束，单个进程或整个项目
-- 显存预算：给项目设上限，超额标红；保留余量可以一键采用建议值
-- 跟随主题，深浅两套配色
+*Shot from the standalone web build of the same panel; as a plugin it renders as a popover next to the input box.*
 
-## 界面
+## Features
 
-```
-● 显卡雷达     1 个任务在跑 · NVIDIA GeForce RTX 4090          ⟳ ×
-[显存 17G / 24G] [内存 16G / 32G] [8 个进程] [1 个超预算]
-┌ 显卡          利用率 ┐ ┌ 显存          占用 ┐
-│      38%            │ │      71%            │
-│ 48°C ~~~‾~~~ 196W   │ │ 24G ~~~‾~~ 可分配   │
-└─────────────────────┘ └─────────────────────┘
-┌ 处理器        利用率 ┐
-│      23%            │
-│ 32线程 ~~~ 16 核     │
-└─────────────────────┘
-内存      ──────────────────────────────  16G / 32G · 50%
-核心负载  ▮▮▮▯▮▮▯▮ ...                    16 核
-╱‾‾‾╲___╱‾‾╲_ 示波器（显存实线 / 处理器虚线，近 10 分钟）
-───────────────────────────────────────────────────────
-项目占用排行                          [显存][处理器][内存]
-01 flowedge  [flowedge] [桌面]
-   显存 ▮▮▮▮▮▮▮▮▮▮░░  16G·65%   处理器 ▮▮▮░░░░  12%·2.3G
-   峰值 19G / 3 个进程 / 利用率 38%                    ›
-02 ComfyUI-H3 ...
-```
+- Three dials — GPU utilisation, VRAM in use, CPU utilisation — each with a 0–100% mini trend line underneath
+- RAM bar plus one load column per core
+- Project leaderboard sorted by VRAM; two bars per row (VRAM and CPU), sortable by CPU or RAM
+- Project detail: member processes with VRAM / CPU / RAM / peak, a runtime overview, loaded models, running jobs
+- Process control: pause, resume, kill — for one process or the whole project
+- VRAM budgets: cap a project, over-budget rows go red; reserved headroom with a one-click suggested value
+- Follows the host theme, light and dark
+- Bilingual panel: English unless the active DSH locale is Chinese
 
-点一行进入详情，Esc 逐级返回：
+## Install
 
-```
-‹ 返回  flowedge                                     [暂停]
-FlowEdge · 文生视频 #338
-C:\Users\you\Desktop\flowedge
-[显存 16G] [显卡 38%] [处理器 12%] [内存 2.3G]
-┌ 运行概况 ──────────────────────────────── flowedge ┐
-│ 引擎    FlowEdge 2026.10.28 · up 10h 52m           │
-│ 服务    ASR（faster-whisper）· 语言模型（Ollama）· TTS（breeze）│
-│ 任务    1 个在跑                                    │
-├ 在用的模型 ────────────────────────────────────────┤
-│ ComfyUI-H3（音视频联合生成）                          │
-│ ComfyUI @ 127.0.0.1:8189 · h3_t2v_fp8 · vae_h3      │
-│ qwen2.5:14b                                         │
-│ Ollama · 8.4G VRAM / 9.0G                           │
-├ 正在跑的任务 ──────────────────────────────────────┤
-│ #338 · 文生视频          [1/3 nodes] [running]      │
-│ 海边日落，渔船归港，长镜头缓推…                        │
-└ 进程 ─────────────────────────────────────────────┘
-● FlowEdge.exe 6832   15G · 4% · 620M      [暂停][结束]
-● python.exe  12100   0.5G · 6% · 1.4G     [暂停][结束]
-```
-
-刷新按钮手动拉取，默认 4 秒一轮。结束进程需要连点两次。
-
-## 数据来源
-
-WDDM 下 `nvidia-smi` 的每进程显存恒为 `[N/A]`，所以每进程显存只能取驱动计数器：
-
-| 指标 | 来源 |
-|---|---|
-| 每进程显存 | `Win32_PerfFormattedData_GPUPerformanceCounters_GPUProcessMemory` |
-| 每进程显卡利用率 | 同系列 `...GPUEngine` |
-| 整卡显存、温度、功耗 | `nvidia-smi --query-gpu` |
-| 每进程 CPU、内存 | `Win32_Process`，KernelModeTime 与 UserModeTime 的差值 |
-| 进程的产品名 | exe 的 PE 资源 `FileDescription`，按路径缓存 |
-| 整机与每核 CPU | `Win32_PerfFormattedData_PerfOS_Processor` |
-| 内存 | `Win32_OperatingSystem` |
-
-采集器是一个常驻 PowerShell 子进程（`lib/collector.ps1`），每轮输出一行 JSON，宿主侧不认识的新字段会被忽略。
-默认 4 秒一轮，每轮几百毫秒到一秒出头。
-
-## 项目归组
-
-命令行里的路径证据强弱不同，先分桶，再按桶的顺序套规则：
-
-| 桶 | 例 | 说明 |
-|---|---|---|
-| `script` | `D:\AI\ComfyUI\main.py`、`ArenaDemo.uproject` | 正在跑的东西，证据最强 |
-| `binary` | `...\Programs\Python311\python.exe` | 解释器或程序，只说明用了什么软件 |
-| `arg` | `--user-data-dir=...\Roaming\@deepseek-ai` | 参数里的目录，证据最弱 |
-
-规则顺序：`workspace` → `desktop` → `path`（AI、Projects、UEProjects、models 等目录名）→ `software` →
-盘符首级 → `exe` → `system`。例如 `python.exe D:\AI\ComfyUI-H3\main.py` 归成 ComfyUI-H3，
-`UnrealEditor-Cmd.exe ...\ArenaDemo.uproject` 归成 ArenaDemo。
-
-## 任务识别
-
-一个 `python.exe` 说明不了什么，所以每条进程都会被翻成一句“它在干什么”：
-
-| 现场 | 显示 |
-|---|---|
-| `python.exe D:\AI\ComfyUI\main.py --port 8189`，队列里有 `h3_t2v_fp8` | ComfyUI-H3 · h3_t2v_fp8.safetensors |
-| `llama-server.exe --model ...\blobs\sha256-...`，Ollama 驻留 `qwen2.5:14b` | Ollama · qwen2.5:14b |
-| `FlowEdge.exe`，引擎有运行中的 run | FlowEdge · 文生视频 #338 |
-| `DSH NEXT.exe --type=gpu-process` | DSH NEXT · GPU 进程 |
-| `UnrealEditor-Cmd.exe ArenaDemo.uproject -game` | UE · ArenaDemo |
-| `tts_breeze_server.py` / `asr_server.py` | TTS · breeze 语音合成 / ASR · faster-whisper 转写 |
-| `dwm.exe` / `csrss.exe` / `explorer.exe` | 桌面窗口管理（dwm）/ 会话管理 / 资源管理器 |
-| `node.exe server.mjs --port 3000` | node · server（副行 port=3000） |
-
-判定顺序：FlowEdge 运行中的 run → LLM 驻留权重 → ComfyUI 权重 → 浏览器子进程角色 → 本地服务脚本名 →
-UE / Blender → 系统进程角色 → 解释器加脚本名 → exe 名加安装目录。探测不到时退到脚本名加参数，不会只剩一个裸 exe。
-
-## 运行概况
-
-资源数字只说多少，说不清是什么。宿主每次采样后会对本地生成栈做有界探测，结果挂在对应项目上，
-端口关着或者超时只损失详情，不影响资源数字：
-
-| 来源 | 端点 | 得到 |
-|---|---|---|
-| FlowEdge | `127.0.0.1:8080/api/health`、`/api/deps`、`/api/runs?status=running`、`/api/pipelines` | 引擎版本与运行时长、依赖服务、正在跑的 run |
-| ComfyUI | 依赖服务的 endpoint 加 `/queue`、`/system_stats`、`/history` | 队列、设备显存、上次执行用过的权重 |
-| 权重文件 | `<install>/models/**` 与 `extra_model_paths.yaml` 指向的目录 | 每个权重文件的磁盘体积 |
-| Ollama | `127.0.0.1:11434/api/ps` | 驻留模型名、显存与体积 |
-
-ComfyUI 的显存归属按三层证据叠：`/queue` 里在跑的 prompt 图的 `ckpt_name`、`unet_name`、`vae_name`、`lora_name`；
-空闲时取 `/history` 最新一条执行，按 `status.messages` 里的时间排序，因为 ComfyUI 不会主动卸载权重；
-体积按模型根逐个 stat 出来，缓存住不重复查。权重合计大于驻留时直接写“超出部分按需换入”，
-不凑一个激活/缓存的差值。
-
-地址可以用 `flowedgeBaseUrl`、`ollamaBaseUrl` 或环境变量 `FLOWEDGE_BASE_URL`、`OLLAMA_BASE_URL` 覆盖，
-`probeServices: false` 可以整体关掉探测。
-
-## 进程管控
-
-| 动作 | 对显存 | 对计算 | 实现 |
-|---|---|---|---|
-| 暂停 | 不释放，仍占用 | 冻结 | `NtSuspendProcess` |
-| 恢复 | — | 解冻 | `NtResumeProcess` |
-| 结束 | 释放 | 终止 | `taskkill /F /T`，连子进程 |
-
-动作可以作用于单个进程，也可以作用于整个项目，逐成员执行并返回成功与失败数量。
-安全限制：只能操作当前快照里出现过的 PID，拒绝 PID 小于等于 8，拒绝 DSH 自身进程，每个动作写一行审计。
-暂停和结束别人的进程需要 DSH 以管理员身份运行，权限不足会提示 access denied。
-
-## 显存预算
-
-Windows 没有每进程显存配额，这里是软配额加余额视图。给项目设 `budgetMiB`，超出即标红，进度条按预算画刻线。
-头部“可分配”等于整卡剩余减去保留余量 `reservedMiB`。保留余量按整卡 6%（夹在 512MiB 到 4G）给建议值，
-与实际值差 256MiB 以上时出现“用建议”按钮。快照同时给出 `pressure`（ok、warn、crit，按 80%、92% 分档）
-与 `overBudgetCount`，写进 `state.json`，重启后仍在。不拦截启动，也不自动杀进程。
-
-## 安装
-
-在 `~/.dsh/profiles/desktop/cordis.patch.yml` 里加一个挂载块：
+Add one mount block to `~/.dsh/profiles/desktop/cordis.patch.yml`:
 
 ```yaml
 - insert:
@@ -165,4 +31,112 @@ Windows 没有每进程显存配额，这里是软配额加余额视图。给项
         intervalMs: 4000
 ```
 
-改 `lib/client.js` 刷新页面生效；改到 `lib/index.js` 或 `lib/*.ps1` 需要重启客户端。
+Copy this repository to `~/.dsh/plugins/dsh-gpu-governor/` first. Editing `lib/client.js` only needs a page refresh; changing `lib/index.js` or `lib/*.ps1` needs a client restart.
+
+## Use
+
+The badge shows the busiest reading at a glance. The refresh button pulls a sample manually; the panel otherwise samples every 4 seconds. Kill requires a second click on the same button. `Esc` walks back out of the detail view.
+
+| Question | Where the answer is |
+|---|---|
+| How much GPU / CPU / RAM is in use? | The three dials and the RAM bar |
+| Who is holding VRAM? | Leaderboard rows are **projects**, not PIDs |
+| Is it also burning CPU? | Two bars per row: VRAM and CPU |
+| Which processes belong to this project? | Click a row: PID, VRAM, CPU, RAM, pause / kill |
+| **Which model or job is it actually running?** | Detail view: runtime overview, loaded models, running jobs |
+| How much can I still allocate? | Dial footnote: allocatable = free VRAM − reserved headroom |
+| How did it get here? | The scope trace: last 10 minutes of VRAM (solid) and CPU (dashed) |
+
+## Where the numbers come from
+
+Under WDDM, per-process VRAM from `nvidia-smi` is always `[N/A]`, so per-process figures come from the driver performance counters instead.
+
+| Metric | Source |
+|---|---|
+| Per-process VRAM | `Win32_PerfFormattedData_GPUPerformanceCounters_GPUProcessMemory` |
+| Per-process GPU utilisation | The matching `...GPUEngine` class |
+| Card-level VRAM, temperature, power | `nvidia-smi --query-gpu` |
+| Per-process CPU and RAM | `Win32_Process`, delta of KernelModeTime and UserModeTime |
+| Process product name | The exe's PE resource `FileDescription`, cached by path |
+| Machine and per-core CPU | `Win32_PerfFormattedData_PerfOS_Processor` |
+| RAM | `Win32_OperatingSystem` |
+
+The collector is a resident PowerShell child process (`lib/collector.ps1`) that prints one JSON line per round. Fields the host does not recognise are ignored, so the two halves can be updated independently. One round takes a few hundred milliseconds to about a second, every 4 seconds by default.
+
+## Project grouping
+
+Command lines carry evidence of different strength, so they are bucketed first and the rules run in bucket order:
+
+| Bucket | Example | Meaning |
+|---|---|---|
+| `script` | `D:\AI\ComfyUI\main.py`, `ArenaDemo.uproject` | What is running — the strongest evidence |
+| `binary` | `...\Programs\Python311\python.exe` | The interpreter or program, i.e. only which software is in use |
+| `arg` | `--user-data-dir=...\Roaming\@deepseek-ai` | A directory in the arguments — the weakest evidence |
+
+Rule order: `workspace` → `desktop` → `path` (AI, Projects, UEProjects, models, …) → `software` → drive root → `exe` → `system`. So `python.exe D:\AI\ComfyUI-H3\main.py` becomes ComfyUI-H3, and `UnrealEditor-Cmd.exe ...\ArenaDemo.uproject` becomes ArenaDemo.
+
+## Task identification
+
+A `python.exe` says nothing on its own, so every process is turned into one sentence describing what it is doing:
+
+| Situation | Shown as |
+|---|---|
+| `python.exe D:\AI\ComfyUI\main.py --port 8189`, queue holds `h3_t2v_fp8` | ComfyUI-H3 · h3_t2v_fp8.safetensors |
+| `llama-server.exe --model ...\blobs\sha256-...`, Ollama holds `qwen2.5:14b` | Ollama · qwen2.5:14b |
+| `FlowEdge.exe` with a running engine run | FlowEdge · text-to-video #338 |
+| `DSH NEXT.exe --type=gpu-process` | DSH NEXT · GPU process |
+| `UnrealEditor-Cmd.exe ArenaDemo.uproject -game` | UE · ArenaDemo |
+| `tts_breeze_server.py` / `asr_server.py` | TTS · breeze / ASR · faster-whisper |
+| `dwm.exe` / `csrss.exe` / `explorer.exe` | Desktop Window Manager (dwm) / session manager / Explorer |
+| `node.exe server.mjs --port 3000` | node · server (second line: port=3000) |
+
+Order: running FlowEdge run → resident LLM weights → ComfyUI weights → browser child role → local service script name → UE / Blender → system process role → interpreter plus script name → exe name plus install directory. When nothing can be probed it falls back to script name plus arguments, never a bare exe.
+
+## Runtime overview
+
+Numbers alone do not say what something is, so after each sample the host makes bounded local probes and attaches the result to the project. A closed port or a timeout only costs detail, never the resource numbers.
+
+| Source | Endpoint | Gives |
+|---|---|---|
+| FlowEdge | `127.0.0.1:8080/api/health`, `/api/deps`, `/api/runs?status=running`, `/api/pipelines` | Engine version and uptime, dependency services, running runs |
+| ComfyUI | Dependency endpoint plus `/queue`, `/system_stats`, `/history` | Queue, device VRAM, weights used by the last execution |
+| Weight files | `<install>/models/**` and directories from `extra_model_paths.yaml` | On-disk size per weight file |
+| Ollama | `127.0.0.1:11434/api/ps` | Resident model names, VRAM and size |
+
+ComfyUI attribution stacks three layers of evidence: `ckpt_name`, `unet_name`, `vae_name` and `lora_name` from prompts in `/queue`; otherwise the latest entry of `/history`, ordered by the timestamps in `status.messages`, because ComfyUI does not unload weights on its own; sizes are stat'ed per model root and cached. When the weight total exceeds resident VRAM the panel says the remainder is swapped in on demand instead of inventing an active/resident split.
+
+Bases can be overridden with `flowedgeBaseUrl`, `ollamaBaseUrl`, or the `FLOWEDGE_BASE_URL` and `OLLAMA_BASE_URL` environment variables. `probeServices: false` turns probing off entirely.
+
+## Process control
+
+| Action | Effect on VRAM | Effect on compute | Implementation |
+|---|---|---|---|
+| Pause | Not released, still held | Frozen | `NtSuspendProcess` |
+| Resume | — | Unfrozen | `NtResumeProcess` |
+| Kill | Released | Terminated | `taskkill /F /T`, children included |
+
+Actions apply to one process or to a whole project, executed member by member with success and failure counts returned. Safety rules: only PIDs present in the current snapshot are accepted, PIDs at or below 8 are refused, DSH's own processes are refused, and every action appends one line to the audit trail. Pausing or killing other users' processes needs DSH running as administrator; otherwise the action reports access denied.
+
+## VRAM budgets
+
+Windows has no per-process VRAM quota, so this is a soft budget plus a balance view. Set `budgetMiB` on a project: the row turns red past it and the bar draws the budget tick. The header's "allocatable" is free VRAM minus the reserved headroom `reservedMiB`. The suggested reserve is 6% of the card, clamped to 512MiB–4G; a "use suggested" button appears when the current value differs by more than 256MiB. Snapshots also carry `pressure` (ok, warn, crit at 80% and 92%) and `overBudgetCount`, persisted in `state.json` across restarts. Nothing is blocked and nothing is killed automatically.
+
+State lives in `~/.dsh/gpu-governor/state.json` (budgets and reserve); the audit trail is `~/.dsh/gpu-governor/audit.jsonl`, one line per control action, rotated past 512KB.
+
+## Standalone web panel
+
+`vram-radar-wb/` is the same idea as a dependency-free web page that runs without the DSH host — useful for screenshots, sharing a snapshot, or checking a machine where DSH is not installed. See [`vram-radar-wb/README.md`](vram-radar-wb/README.md).
+
+## Layout
+
+```
+lib/index.js        host half: collector process, snapshot assembly, control actions, budgets, probes
+lib/client.js       browser half: badge and React panel
+lib/collector.ps1   resident sampler, one JSON line per round
+lib/manage.ps1      suspend / resume helper
+vram-radar-wb/      standalone web panel (engine + static page + optional skill)
+```
+
+## License
+
+MIT

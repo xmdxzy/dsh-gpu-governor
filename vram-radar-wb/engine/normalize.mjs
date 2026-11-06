@@ -1,28 +1,34 @@
 /**
- * 归一化层：把采集器的原始样本压成面板认识的那一份快照。
+ * Normalization layer: folds the collector's raw samples into the one snapshot the panel knows.
  *
- * 面板（lib/client.js）只吃一种形状——和 DSH 插件 `snapshot()` 返回的完全一致。
- * 桌面端已经把这套归组 / 任务身份 / 工作归属的逻辑写了 1800 行，重复实现一遍
- * 只会立刻跑偏，所以这里优先 **借用 DSH 插件宿主半导出的 __test 工具**：
+ * The panel (lib/client.js) accepts exactly one shape — identical to what the DSH plugin's
+ * `snapshot()` returns. The desktop side already wrote 1800 lines of grouping / task identity
+ * / workload attribution logic, and re-implementing it would drift immediately, so this file
+ * prefers **borrowing the __test helpers exported by the DSH plugin host**:
  *
- *   __test.aggregateGroups()  —— 按项目归组（脚本 > 程序 > 参数 三桶证据）
- *   __test.describeProcess()  —— 「python.exe」→「ComfyUI-H3 · h3_t2v_fp8」
- *   __test.workloadDetail()   —— 工作归属：引擎版本 / 在用的模型 / 正在跑的任务
- *   __test.collectWorkload()  —— 探测 FlowEdge / ComfyUI / Ollama
+ *   __test.aggregateGroups()  — group by project (script > program > args, three buckets)
+ *   __test.describeProcess()  — "python.exe" → "ComfyUI-H3 · h3_t2v_fp8"
+ *   __test.workloadDetail()   — workload attribution: engine version / models / running jobs
+ *   __test.collectWorkload()  — probe FlowEdge / ComfyUI / Ollama
  *
- * 插件不在（卸载了 / 换机器）时退到本文件的精简归组：只按可执行路径分桶，
- * 任务名用 PE 里的产品名，不探测本地引擎。降级是显式的，会写进 snapshot.warnings。
+ * When the plugin is absent (uninstalled / different machine) this falls back to the minimal
+ * grouping below: bucket by executable path only, name tasks after the PE product name, no
+ * local engine probing. The degradation is explicit and lands in snapshot.warnings.
  */
 import { existsSync } from "node:fs";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const STATE_DIR = process.env.VRAM_RADAR_HOME || path.join(os.homedir(), ".workbuddy", "vram-radar");
 const STATE_FILE = path.join(STATE_DIR, "state.json");
 const HISTORY_FILE = path.join(STATE_DIR, "history.jsonl");
 const DEFAULT_DSH_INDEX = path.join(os.homedir(), ".dsh", "plugins", "dsh-gpu-governor", "lib", "index.js");
+/* The repository ships the plugin host half next to the engine, so prefer it over
+   whatever copy happens to be installed under ~/.dsh; that keeps grouping labels
+   in step with this checkout instead of an older install. */
+const REPO_INDEX = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "lib", "index.js");
 const HISTORY_LIMIT = 200;
 const TOP_LIMIT = 5;
 const ALL_LIMIT = 30;
@@ -44,7 +50,7 @@ export async function loadState() {
 	}
 }
 
-/** 每轮采样写一行，跨调用累积成趋势。DSH 侧是内存里的 200 点，这里是磁盘上的 200 点。 */
+/** One line per sample round, accumulated across calls into a trend. On the DSH side it is 200 points in memory; here it is 200 points on disk. */
 export async function appendHistory(points) {
 	if (points.length === 0) return;
 	await mkdir(STATE_DIR, { recursive: true });
@@ -70,19 +76,22 @@ async function readHistory() {
 }
 
 async function loadHostHelpers() {
-	const indexPath = process.env.VRAM_GOVERNOR_INDEX || DEFAULT_DSH_INDEX;
-	if (!existsSync(indexPath)) return null;
-	try {
-		const module = await import(pathToFileURL(indexPath).href);
-		const helpers = module?.__test;
-		if (!helpers || typeof helpers.aggregateGroups !== "function") return null;
-		return helpers;
-	} catch {
-		return null;
+	const candidates = [process.env.VRAM_GOVERNOR_INDEX, REPO_INDEX, DEFAULT_DSH_INDEX]
+		.filter((candidate) => typeof candidate === "string" && candidate.length > 0);
+	for (const indexPath of candidates) {
+		if (!existsSync(indexPath)) continue;
+		try {
+			const module = await import(pathToFileURL(indexPath).href);
+			const helpers = module?.__test;
+			if (helpers && typeof helpers.aggregateGroups === "function") return helpers;
+		} catch {
+			/* try the next candidate */
+		}
 	}
+	return null;
 }
 
-/* ---------------------------------------------------------------- 降级归组 */
+/* ---------------------------------------------------------------- fallback grouping */
 
 const SCRIPT_EXT = /\.(py|js|mjs|cjs|ts|uproject|blend|bat|ps1|exe)$/i;
 
@@ -107,7 +116,7 @@ function fallbackGroups(procs) {
 		const key = `path:${dir.toLowerCase()}`;
 		let bucket = buckets.get(key);
 		if (bucket === undefined) {
-			const label = path.basename(dir) || proc.prod || proc.name || "未归组";
+			const label = path.basename(dir) || proc.prod || proc.name || "ungrouped";
 			bucket = { key, label, basis: "path", dir, memBytes: 0, ramBytes: 0, cpu: 0, util: 0, processes: [] };
 			buckets.set(key, bucket);
 		}
@@ -124,11 +133,11 @@ function fallbackGroups(procs) {
 	return buckets;
 }
 
-/* --------------------------------------------------------------- 快照组装 */
+/* --------------------------------------------------------------- snapshot assembly */
 
 /**
- * @param {object} sample 采集器最后一行原始样本
- * @param {object[]} samples 本轮全部样本（用于趋势与峰值）
+ * @param {object} sample the collector's last raw sample
+ * @param {object[]} samples all samples from this round (used for the trend and peaks)
  * @param {{sanitize?: (text: string) => string}} options
  */
 export async function buildSnapshot(sample, samples, options = {}) {
@@ -136,7 +145,7 @@ export async function buildSnapshot(sample, samples, options = {}) {
 	const state = await loadState();
 	const helpers = await loadHostHelpers();
 	const warnings = [];
-	if (helpers === null) warnings.push("未找到 DSH 显存雷达插件，已降级为按可执行路径归组（不探测 FlowEdge / ComfyUI / Ollama）");
+	if (helpers === null) warnings.push("DSH GPU Radar plugin not found; degraded to grouping by executable path (no FlowEdge / ComfyUI / Ollama probing)");
 
 	let groups;
 	let workload = null;
@@ -202,7 +211,7 @@ export async function buildSnapshot(sample, samples, options = {}) {
 		return row;
 	});
 
-	// 峰值只能来自本轮样本：WorkBuddy 侧没有常驻进程，拿不到跨调用的高水位。
+	// Peaks can only come from this round's samples: WorkBuddy has no long-running process, so no cross-call high-water mark.
 	const peakByKey = new Map();
 	for (const entry of samples) {
 		const snapshotGroups = helpers !== null
@@ -223,7 +232,7 @@ export async function buildSnapshot(sample, samples, options = {}) {
 	const freeMiB = gpu ? Math.max(0, totalMiB - usedMiB) : 0;
 	const reserveSuggestedMiB = clamp(Math.round(totalMiB * 0.06), 512, 4096);
 
-	// 单样本时 procUtil（差值法）必然是 0，此时用 PerfOS 的 _Total 兜底。
+	// With a single sample, procUtil (delta method) is necessarily 0; fall back to PerfOS _Total.
 	const deltaCpu = typeof cpuSample?.procUtil === "number" ? cpuSample.procUtil : null;
 	const perfCpu = typeof cpuSample?.totalUtil === "number" ? cpuSample.totalUtil : cpuSample?.util;
 	const cpuPct = deltaCpu !== null && deltaCpu > 0.05 ? deltaCpu : (perfCpu ?? 0);
@@ -254,7 +263,7 @@ export async function buildSnapshot(sample, samples, options = {}) {
 		},
 		gpu: gpu === null ? null : {
 			index: gpu.index ?? 0,
-			name: gpu.name ?? "未知显卡",
+			name: gpu.name ?? "unknown GPU",
 			totalMiB,
 			usedMiB,
 			freeMiB,
@@ -313,7 +322,7 @@ export async function buildSnapshot(sample, samples, options = {}) {
 	return snapshot;
 }
 
-/** 路径脱敏：投稿截图 / 公开页面不能带出本机账号名。 */
+/** Path sanitizing: screenshots and public pages must not leak the local account name. */
 export function makeSanitizer(enabled) {
 	if (!enabled) return (text) => text;
 	const userName = os.userInfo().username;
@@ -322,11 +331,12 @@ export function makeSanitizer(enabled) {
 	const homePosix = home.replace(/\\/g, "/");
 
 	/**
-	 * 有些字段是「先截断加省略号」再进脱敏器的，例如 `C:\Users\Administrat…`：
-	 * 完整 home 匹配不上，完整账号名也匹配不上，账号名就这样漏出去了。
-	 * 这里按「用户目录根」整段匹配 `<home 的父目录>\<任意账号片段>`，
-	 * 顺带把同机其他账号的路径也抹平——过度脱敏比漏一个账号名安全。
-	 * 仅当 home 形如 `X:\Users\<name>` 时启用，其他布局退回字面替换。
+	 * Some fields are "truncated with an ellipsis" before they reach the sanitizer, e.g. `C:\Users\Administrat…`:
+	 * the full home path does not match, the full account name does not match either, and the
+	 * account name leaks. So match the whole "user directory root" as
+	 * `<parent of home>\<any account fragment>`, which also flattens other accounts on the same
+	 * machine — over-sanitizing beats leaking one account name.
+	 * Only enabled when home looks like `X:\Users\<name>`; other layouts fall back to literal replacement.
 	 */
 	const userRoot = path.dirname(homeWin);
 	const usersLayout = path.basename(userRoot).toLowerCase() === "users";

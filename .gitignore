@@ -1,9 +1,9 @@
-# 构建产物（本仓库即手工维护的发行版，无构建步骤）
+# Build output (this repository is the hand-maintained release, there is no build step)
 node_modules/
 dist/
 *.log
 
-# 系统/编辑器
+# OS / editors
 .DS_Store
 Thumbs.db
 .idea/

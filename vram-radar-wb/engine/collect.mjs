@@ -1,11 +1,12 @@
 /**
- * 采集层：拉起 PowerShell 采集器，收够样本就收工。
+ * Collection layer: spawns the PowerShell collector and stops once it has enough samples.
  *
- * 采集器本身是 DSH 插件的常驻进程设计（一行 JSON / 一轮），这里只做
- * 一次性使用：读到 wantSamples 行或撞上 deadline 就杀掉子进程。
- * 实测（本机 72 线程 / 31–34 个有显存进程）：
- *   第 1 行 +6.5s（WMI 类首次加载 + 720 个 GPUEngine 实例）
- *   之后每行 ~1.0s（-IntervalMs 1500 时）
+ * The collector itself is designed as a long-running process for the DSH plugin (one JSON
+ * line per round); here it is one-shot: once wantSamples lines arrive, or the deadline
+ * hits, the child process is killed.
+ * Measured (this machine: 72 threads / 31–34 processes holding VRAM):
+ *   first line +6.5s (first WMI class load + 720 GPUEngine instances)
+ *   ~1.0s per line after that (-IntervalMs 1500)
  */
 import { spawn } from "node:child_process";
 import path from "node:path";
@@ -64,15 +65,15 @@ export function collect(options = {}) {
 		});
 		child.stderr.setEncoding("utf8");
 		child.stderr.on("data", (chunk) => { stderrTail = (stderrTail + chunk).slice(-800); });
-		child.on("error", (error) => finish(`采集器启动失败：${error.message}`));
+		child.on("error", (error) => finish(`collector failed to start: ${error.message}`));
 		child.on("exit", () => {
 			if (samples.length > 0) return finish(null);
-			finish(`采集器没有输出样本${stderrTail.trim() === "" ? "" : `：${stderrTail.trim()}`}`);
+			finish(`collector produced no samples${stderrTail.trim() === "" ? "" : `: ${stderrTail.trim()}`}`);
 		});
 
 		const timer = setTimeout(() => {
 			if (samples.length > 0) return finish(null);
-			finish(`采集超时（${Math.round(deadlineMs / 1000)}s 内没有样本）`);
+			finish(`collection timed out (no samples within ${Math.round(deadlineMs / 1000)}s)`);
 		}, deadlineMs);
 	});
 }

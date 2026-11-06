@@ -1,7 +1,7 @@
-/* 显卡雷达 · 面板样式
-   设计基线：DSH 插件面板（#0b0c0e 底 + 16px 点阵 + 等宽数字 + 角标括号）
-   搬到网页后放大留白、提高对比，但颜色语义不变：
-   cyan=显卡 / violet=显存 / amber=处理器 / slate=内存 / green=正常 / red=告急 */
+/* GPU Radar · panel styles
+   Design baseline: the DSH plugin panel (#0b0c0e base + 16px dot grid + tabular numerals + bracketed
+   corner badges). On the web it gets more whitespace and higher contrast, but the color semantics are
+   unchanged: cyan = GPU / violet = VRAM / amber = CPU / slate = system RAM / green = healthy / red = critical */
 
 :root{
   --bg:#07080a;
@@ -40,8 +40,8 @@ body{
 code{font-family:var(--mono);font-size:.94em;color:#c9d2da;background:rgba(255,255,255,.05);padding:1px 5px;border-radius:4px}
 button{font-family:inherit}
 
-/* ---------------------------------------------------------------- 背景 */
-/* 三层极光慢漂 + 点阵呼吸 + 指针软光，全部只动 transform / opacity */
+/* ---------------------------------------------------------------- backdrop */
+/* three slow aurora layers + breathing dot grid + pointer glow, all animating transform / opacity only */
 .backdrop{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
 .backdrop .aurora{
   position:absolute;border-radius:50%;
@@ -103,7 +103,7 @@ button{font-family:inherit}
   50% {transform:translate3d(11px,11px,0)}
   100%{transform:translate3d(0,0,0)}
 }
-/* 指针软光：JS 平滑插值目标位置，这里只吃 --px/--py */
+/* pointer glow: JS eases the target position, CSS only consumes --px / --py */
 .backdrop .pointerlight{
   position:absolute;left:0;top:0;width:460px;height:460px;margin:-230px 0 0 -230px;
   background:radial-gradient(circle at 50% 50%,rgba(53,198,212,.10),rgba(138,120,232,.06) 42%,transparent 68%);
@@ -112,7 +112,7 @@ button{font-family:inherit}
   opacity:.9;
   will-change:transform;
 }
-/* 顶部渐隐 + 细颗粒，压住大色块带状 */
+/* top fade + fine grain to keep the large color fields from banding */
 .backdrop .veil{
   position:absolute;inset:0;
   background:
@@ -120,7 +120,7 @@ button{font-family:inherit}
     radial-gradient(140% 100% at 50% 0%,transparent 42%,rgba(7,8,10,.55) 100%);
 }
 
-/* ---------------------------------------------------------------- 顶栏 */
+/* ---------------------------------------------------------------- top bar */
 .topbar{
   position:relative;z-index:1;
   max-width:1180px;margin:0 auto;padding:26px 22px 14px;
@@ -153,7 +153,7 @@ button{font-family:inherit}
 .pill[data-level=crit]{border-color:rgba(229,72,77,.45);color:#ffb3b6;background:rgba(229,72,77,.08)}
 .pill[data-level=ok]{border-color:rgba(63,178,127,.35);color:#9fe0c2}
 
-/* ---------------------------------------------------------------- 语言切换 */
+/* ---------------------------------------------------------------- language switcher */
 .topbar-side{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
 .lang{position:relative;flex:none}
 .langbtn{
@@ -193,7 +193,7 @@ button{font-family:inherit}
 .langmenu button[aria-selected=true]{color:var(--ink);background:rgba(53,198,212,.1);box-shadow:inset 2px 0 0 var(--gpu)}
 .langmenu button[aria-selected=true] i{color:var(--gpu)}
 
-/* ---------------------------------------------------------------- 主区 */
+/* ---------------------------------------------------------------- main area */
 main{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:0 22px 40px;display:flex;flex-direction:column;gap:14px}
 
 .card{
@@ -211,7 +211,7 @@ main{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:0 22px 4
 
 .hero{display:grid;grid-template-columns:minmax(0,1.66fr) minmax(0,1fr);gap:14px}
 
-/* ---------------------------------------------------------------- 三块圆表 */
+/* ---------------------------------------------------------------- the three dials */
 .system{padding:16px 16px 13px;display:flex;flex-direction:column}
 .gauges{display:flex;gap:6px;align-items:stretch}
 .gauge{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;text-align:center;padding:2px 2px 0}
@@ -220,7 +220,8 @@ main{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:0 22px 4
 .gauge .gfoot{margin-top:2px;font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;color:var(--ink-3);white-space:nowrap}
 .gauge .gfoot b{color:var(--ink-2);font-weight:500}
 
-/* 分段光环由 JS 仪表运行时逐帧驱动（凝光点火/怠速/弹簧落位），不挂过渡避免打架 */
+/* the segmented halo is driven frame by frame by the JS gauge runtime (ignition / idle / spring settle);
+   no transitions here so the two do not fight */
 .ring-tick{stroke:rgba(255,255,255,.14);stroke-width:1}
 .ring-tick.major{stroke:rgba(255,255,255,.26)}
 .ring-tick[data-hot=true]{stroke:rgba(229,72,77,.55)}
@@ -241,7 +242,7 @@ main{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:0 22px 4
 .cores b{flex:1 1 0;min-width:0;background:linear-gradient(180deg,rgba(217,154,43,.95),rgba(217,154,43,.42));border-radius:1px 1px 0 0;opacity:.9}
 .cores b[data-idle=true]{background:rgba(255,255,255,.13);opacity:1}
 
-/* ---------------------------------------------------------------- 判读卡 */
+/* ---------------------------------------------------------------- verdict card */
 .judge{padding:14px 15px 13px;display:flex;flex-direction:column;gap:10px}
 .judge-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .judge-head h3{margin:0;font-size:10px;letter-spacing:.18em;color:var(--ink-3);font-weight:500}
@@ -274,13 +275,13 @@ main{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:0 22px 4
 .btn[data-danger=true]:hover{background:rgba(229,72,77,.16);color:#ffe0e1}
 .btn[data-flat=true]{border-color:transparent;background:transparent;padding:5px 4px}
 
-/* ---------------------------------------------------------------- 排行榜 */
+/* ---------------------------------------------------------------- leaderboard */
 .board{padding:0}
 .board-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:13px 15px 11px;border-bottom:1px solid var(--line)}
 .board-head h2{margin:0;font-size:11px;font-weight:600;letter-spacing:.18em;color:var(--ink-2);display:flex;align-items:baseline;gap:9px}
 .board-head .hint{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;color:var(--ink-4);font-weight:400}
 .tools{display:flex;align-items:center;gap:8px}
-/* 搜索框：玻璃胶囊 + 双层渐变描边（聚焦后缓慢旋转的锥形渐变）+ 扫描光 */
+/* search field: glass pill + two-layer gradient stroke (a slow-spinning conic gradient once focused) + scan light */
 @property --field-angle{syntax:"<angle>";inherits:false;initial-value:120deg}
 .field{
   position:relative;isolation:isolate;overflow:hidden;
@@ -434,7 +435,7 @@ main{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:0 22px 4
 .rmeta span::before{content:"·";margin-right:7px;color:var(--ink-4)}
 .rmeta span:first-child::before{content:none;margin:0}
 
-/* 展开详情 */
+/* expanded details */
 .detail{display:none;margin:11px 0 2px 30px;border-top:1px dashed var(--line-soft);padding-top:11px}
 .row[data-open=true] .detail{display:block}
 
@@ -481,7 +482,7 @@ main{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:0 22px 4
 .board-foot{padding:9px 15px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;font-family:var(--mono);font-size:9.5px;color:var(--ink-4);letter-spacing:.05em}
 .board-foot b{color:var(--ink-2);font-weight:500}
 
-/* ---------------------------------------------------------------- 下半区 */
+/* ---------------------------------------------------------------- lower section */
 .lower{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:14px}
 .card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line-soft)}
 .card-head h2{margin:0;font-size:10px;font-weight:600;letter-spacing:.18em;color:var(--ink-2)}
@@ -504,7 +505,7 @@ main{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:0 22px 4
 .wlrow v em{font-style:normal;font-family:var(--mono);font-size:9px;color:var(--ink-3)}
 .chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
 
-/* ---------------------------------------------------------------- 说明 */
+/* ---------------------------------------------------------------- how-to */
 .howto{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
 .how{padding:13px 14px 12px;display:flex;flex-direction:column;gap:7px}
 .how h3{margin:0;font-size:10.5px;letter-spacing:.14em;color:var(--ink-2);font-weight:600;display:flex;align-items:center;gap:7px}
@@ -530,17 +531,17 @@ main{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:0 22px 4
 }
 .tip b{color:var(--ink);font-weight:600}
 
-/* ---------------------------------------------------------------- 流动与入场层
-   只保留：入场淡入、数值缓动、详情淡入，外加两处流光（弧带 6s · 条 2.8s），读作「数据在走」。
-   不呼吸、不发光、不扫描。 */
+/* ---------------------------------------------------------------- motion & entrance layer
+   Only three things remain: entrance fades, value easing, detail fades, plus two light sweeps
+   (arc 6s · bar 2.8s) so it reads as "data in motion". No breathing, no glow, no scanning. */
 
-/* 顶栏：雷达扫描放慢成像呼吸，光点跟着慢闪 */
+/* top bar: the radar sweep slows into a breathing image, its blip pulses along */
 
-/* 状态点：向外扩一圈慢脉冲 */
+/* status dot: a slow pulse ring expanding outward */
 .pill i{position:relative}
 .pill[data-level=idle] i::after{animation:none}
 
-/* 卡片：入场轻浮起 + 角标呼吸 */
+/* cards: a light lift on entrance + breathing corner badge */
 main > section{animation:rise-in .95s cubic-bezier(.22,.8,.28,1) both}
 main > section:nth-child(1){animation-delay:.02s}
 main > section:nth-child(2){animation-delay:.1s}
@@ -551,12 +552,12 @@ main > section:nth-child(4){animation-delay:.26s}
   to  {opacity:1;transform:none}
 }
 
-/* 圆表：单一读数表达，不呼吸不脉动 */
+/* dials: a single readout, no breathing, no pulsing */
 .gauge:nth-child(2) svg{--gauge-i:1}
 .gauge:nth-child(3) svg{--gauge-i:2}
 .gauge .gfoot{transition:color .6s ease}
 
-/* 进度条：叠一条整条宽的流光（2.8s 一趟），不呼吸 */
+/* progress bar: one full-width light sweep (2.8s per pass), no breathing */
 .strip .track i,
 .barrow .track i{position:absolute;overflow:hidden;will-change:transform}
 .strip .track i::after,
@@ -576,12 +577,13 @@ main > section:nth-child(4){animation-delay:.26s}
   55%,100%{transform:translateX(220%)}
 }
 
-/* 排行行：悬停时一道柔光横掠，展开时左侧色条呼吸 */
+/* leaderboard rows: a soft light sweeps across on hover; when expanded the left color bar breathes */
 .row{overflow:hidden}
 
-/* 排序标签：选中态光晕呼吸 */
+/* sort tabs: the selected state breathes a soft halo */
 
-/* 展开详情：只在「刚点开」那一行淡入一次；实时刷新重建行时不重放（避免每 3 秒闪一下） */
+/* expanded details: fade in once on the row just opened; not replayed when live refresh rebuilds rows
+   (so it does not blink every 3 seconds) */
 .row[data-open=true] .detail{display:block}
 .row.just-opened .detail{animation:detail-in .42s cubic-bezier(.22,.8,.28,1) both}
 @keyframes detail-in{
@@ -589,12 +591,12 @@ main > section:nth-child(4){animation-delay:.26s}
   to  {opacity:1;transform:none}
 }
 
-/* 明细小卡与说明块：悬停微微提亮（不位移，避免抖动） */
+/* detail chips and how-to blocks: subtle brighten on hover (no movement, to avoid jitter) */
 .dcard,.how{transition:border-color .5s ease,background .5s ease}
 .dcard:hover{border-color:rgba(53,198,212,.26);background:rgba(53,198,212,.035)}
 .how:hover{border-color:rgba(53,198,212,.2)}
 
-/* ---------------------------------------------------------------- 响应 */
+/* ---------------------------------------------------------------- responsive */
 @media (max-width:1020px){
   .hero{grid-template-columns:minmax(0,1fr)}
   .lower,.howto{grid-template-columns:minmax(0,1fr)}

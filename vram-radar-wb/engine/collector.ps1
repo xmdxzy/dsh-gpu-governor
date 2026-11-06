@@ -1,4 +1,4 @@
-﻿# GPU + CPU governor collector: one JSON line per sample on stdout.
+# GPU + CPU governor collector: one JSON line per sample on stdout.
 #
 # Windows WDDM hides per-process VRAM from nvidia-smi (used_gpu_memory = [N/A]),
 # so per-PID numbers come from the GPU performance-counter WMI classes, which
@@ -161,9 +161,9 @@ function Read-ProcessInfo {
     return $table
 }
 
-# Human-facing product name for an executable ("网易UU远程服务" instead of
-# "GameViewerServer.exe"). Windows keeps this in the PE resources, so it costs
-# one file open per unique path and is cached for the life of the collector.
+# Human-facing product name for an executable (the NetEase UU Remote service
+# rather than "GameViewerServer.exe"). Windows keeps this in the PE resources, so
+# it costs one file open per unique path and is cached for the life of the collector.
 $script:versionCache = @{}
 function Get-ExeProduct([string] $path) {
     if ([string]::IsNullOrWhiteSpace($path)) { return '' }

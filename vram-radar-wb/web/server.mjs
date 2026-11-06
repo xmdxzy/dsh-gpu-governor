@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * 显存雷达 · 本机实时服务
+ * VRAM Radar · local live server
  *
- *   node web/server.mjs                 → http://127.0.0.1:4711（每 3 秒按需重采）
- *   node web/server.mjs --port 4800     → 换端口
- *   node web/server.mjs --once          → 只采一次，之后当静态站用
- *   node web/server.mjs --raw           → 不脱敏（默认把 C:\Users\<你> 换成 C:\Users\you）
+ *   node web/server.mjs                 → http://127.0.0.1:4711 (re-samples on demand every 3s)
+ *   node web/server.mjs --port 4800     → different port
+ *   node web/server.mjs --once          → sample once, then serve as a static site
+ *   node web/server.mjs --raw           → no sanitizing (default: C:\Users\<you> becomes C:\Users\you)
  *
- * 采集是「拉起 PowerShell 采集器 → 收够 3 个样本 → 杀掉子进程」的一次性动作，
- * 冷启第一行约 6.5 秒（WMI 类首次加载），所以默认按 3 秒轮询时用缓存兜住，
- * 上一份快照随时可读，绝不排队等采集。
+ * Sampling is one-shot: "spawn the PowerShell collector → collect 3 samples → kill the child".
+ * The first cold line takes ~6.5 seconds (first WMI class load), so the default 3s polling is
+ * backed by cache: the previous snapshot is always readable, nothing ever queues behind a sample.
  */
 import http from "node:http";
 import { readFile } from "node:fs/promises";
@@ -49,7 +49,7 @@ function parseArgs(argv) {
 
 const options = parseArgs(process.argv.slice(2));
 if (options.help) {
-	console.log("用法：node web/server.mjs [--port 4711] [--once] [--raw] [--interval 3000] [--samples 3]");
+	console.log("Usage: node web/server.mjs [--port 4711] [--once] [--raw] [--interval 3000] [--samples 3]");
 	process.exit(0);
 }
 
@@ -58,7 +58,7 @@ const cache = { snapshot: null, at: 0, error: null, inflight: null };
 
 async function sample() {
 	const collected = await collect({ wantSamples: options.samples, deadlineMs: 20000 });
-	if (collected.samples.length === 0) throw new Error(collected.error || "采集失败：没有样本");
+	if (collected.samples.length === 0) throw new Error(collected.error || "collection failed: no samples");
 	const snapshot = await buildSnapshot(collected.samples.at(-1), collected.samples, { sanitize, intervalMs: 1200 });
 	return snapshot;
 }
@@ -144,16 +144,16 @@ const server = http.createServer(async (request, response) => {
 	await serveStatic(response, pathname);
 });
 
-process.stdout.write("显存雷达 · 首次采样中（冷启约 7 秒）…\n");
+process.stdout.write("VRAM Radar · first sample in progress (cold start ~7s)…\n");
 try {
 	const first = await refresh();
 	const gpu = first.gpu;
-	process.stdout.write(`  ${gpu ? `${gpu.name} · ${(gpu.usedMiB / 1024).toFixed(1)}G / ${(gpu.totalMiB / 1024).toFixed(1)}G` : "未读到显卡"} · ${first.processCount} 进程 / ${first.groupCount} 项目\n`);
+	process.stdout.write(`  ${gpu ? `${gpu.name} · ${(gpu.usedMiB / 1024).toFixed(1)}G / ${(gpu.totalMiB / 1024).toFixed(1)}G` : "no GPU detected"} · ${first.processCount} processes / ${first.groupCount} projects\n`);
 } catch (error) {
-	process.stdout.write(`  采样失败：${error.message}（服务仍会启动，页面显示上一份或空态）\n`);
+	process.stdout.write(`  sampling failed: ${error.message} (the server still starts; the page shows the previous snapshot or the empty state)\n`);
 }
 
 server.listen(options.port, "127.0.0.1", () => {
-	process.stdout.write(`显存雷达 · http://127.0.0.1:${options.port}  ${options.once ? "静态模式" : `每 ${options.interval}ms 按需重采`}${options.raw ? " · 未脱敏" : ""}\n`);
-	process.stdout.write("  停止：Ctrl+C\n");
+	process.stdout.write(`VRAM Radar · http://127.0.0.1:${options.port}  ${options.once ? "static mode" : `re-sampling on demand every ${options.interval}ms`}${options.raw ? " · unsanitized" : ""}\n`);
+	process.stdout.write("  Stop: Ctrl+C\n");
 });

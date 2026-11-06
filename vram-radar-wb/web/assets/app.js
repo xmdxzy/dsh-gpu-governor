@@ -1,12 +1,13 @@
-/* 显卡雷达 · 面板逻辑
-   只吃 web/data/snapshot.js（window.__VRAM_SNAPSHOT__）这一份数据，
-   实时模式由 web/server.mjs 把新快照塞进同一个全局变量并触发 re-render。 */
+/* GPU Radar · panel logic
+   Reads exactly one dataset: web/data/snapshot.js (window.__VRAM_SNAPSHOT__).
+   Live mode is driven by web/server.mjs, which writes a fresh snapshot into that same global and re-renders. */
 
 (() => {
   "use strict";
 
-  /* 双语：字典在 assets/i18n.js，默认英文，右上角小菜单切换并记住选择。
-     界面文案一律走 T()，数据本身（项目名/任务名/进程/路径）不翻译。 */
+  /* Bilingual: the dictionary lives in assets/i18n.js. English is the default; the small menu in the
+     top-right corner switches language and remembers the choice. All UI copy goes through T();
+     the data itself (project / task / process / path names) is never translated. */
   const I18N = window.VRAM_I18N;
   const T = (key, vars) => I18N.t(key, vars);
   const PRESSURE = ["ok", "warn", "crit", "idle"];
@@ -40,7 +41,7 @@
     budgets: loadBudgets()
   };
 
-  /* ------------------------------------------------------------ 小工具 */
+  /* ------------------------------------------------------------ helpers */
   const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
   const num = (value, digits = 0) => (Number.isFinite(value) ? value.toFixed(digits) : "—");
   const gib = (mib) => `${(Number(mib || 0) / 1024).toFixed(1)}G`;
@@ -64,7 +65,7 @@
     } catch { return {}; }
   }
   function saveBudgets() {
-    try { localStorage.setItem(BUDGET_KEY, JSON.stringify(state.budgets)); } catch { /* 隐私模式忽略 */ }
+    try { localStorage.setItem(BUDGET_KEY, JSON.stringify(state.budgets)); } catch { /* ignore in private mode */ }
   }
   const budgetOf = (project) => {
     const own = state.budgets[project.key];
@@ -72,7 +73,7 @@
     return Number.isFinite(project.budgetMiB) ? project.budgetMiB : null;
   };
 
-  /* ------------------------------------------------------------ 几何 */
+  /* ------------------------------------------------------------ geometry */
   const polar = (cx, cy, r, deg) => {
     const rad = ((deg - 90) * Math.PI) / 180;
     return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)];
@@ -86,12 +87,14 @@
   const GAUGE = { cx: 60, cy: 62, r: 43, from: -135, sweep: 270, segs: 36 };
   const REDLINE_AT = 0.82;
 
-  /* ------------------------------------------------------------ 跑车仪表运行时（定稿配方）
-     分段光环 × 粗刻度 × 单针 × 发丝圈 × 读数沉底 × 凝光点火。
-     一个 rAF 循环统一驱动：
-     - 首帧凝光：整表虚焦凝聚成形，段随进度逐段点亮；
-     - 实时刷新（每 3s 重建 DOM）只换 target —— pos/vel 活在 state 里，动画连续、绝不重放；
-     - 落位后指针怠速微振；读数进红区时红段呼吸告警。 */
+  /* ------------------------------------------------------------ sports-car gauge runtime (final recipe)
+     Segmented halo × chunky ticks × single needle × hairline ring × bottom-anchored readout × focus-in ignition.
+     One rAF loop drives all of it:
+     - first frame: the whole dial resolves out of a blur and the segments light up one by one with progress;
+     - live refresh (DOM rebuilt every 3s) only swaps the target — pos/vel live in state, so the motion stays
+       continuous and never replays;
+     - once settled the needle idles with a micro-jitter; when the readout enters the red zone the red
+       segments breathe as an alert. */
   const tach = (() => {
     const reduced = window.matchMedia("(prefers-reduced-motion:reduce)").matches;
     const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
@@ -172,7 +175,7 @@
     const st = tach.target(id, ratio);
     const shown = Math.min(Math.max(st.pos, 0), 1);
     const end = GAUGE.from + GAUGE.sweep * shown;
-    /* 36 段光环：段间留缝，红区段用告警色打底 */
+    /* 36-segment halo: gaps between segments, red-zone segments backed by the alert color */
     const segs = Array.from({ length: GAUGE.segs }, (_, index) => {
       const t0 = index / GAUGE.segs;
       const t1 = (index + 1) / GAUGE.segs;
@@ -186,7 +189,7 @@
       const op = on ? (lead ? "1" : "0.78") : (hot ? "0.15" : "0.09");
       return `<path class="tach-seg"${hot ? ' data-hot="1"' : ""} d="M${x1.toFixed(2)} ${y1.toFixed(2)} A${GAUGE.r} ${GAUGE.r} 0 0 1 ${x2.toFixed(2)} ${y2.toFixed(2)}" fill="none" stroke="${hot ? "var(--crit)" : accent}" stroke-width="6.5" stroke-linecap="butt" opacity="${op}"/>`;
     }).join("");
-    /* 9 根粗刻度（每 4 段一根），红区段染红 */
+    /* 9 chunky ticks (one every 4 segments); red-zone ticks are tinted red */
     const ticks = Array.from({ length: 9 }, (_, index) => {
       const t = index / 8;
       const angle = GAUGE.from + GAUGE.sweep * t;
@@ -195,7 +198,7 @@
       const [bx, by] = polar(GAUGE.cx, GAUGE.cy, GAUGE.r + 11, angle);
       return `<line class="ring-tick${hot ? " major" : ""}"${hot ? ' data-hot="true"' : ""} x1="${ax.toFixed(1)}" y1="${ay.toFixed(1)}" x2="${bx.toFixed(1)}" y2="${by.toFixed(1)}"/>`;
     }).join("");
-    /* 已用弧段：裁出光带只在这段里走（遮罩裁在已用弧段内） */
+    /* used arc: the light sweep is clipped to this arc only (mask limited to the used arc) */
     const [osx, osy] = polar(GAUGE.cx, GAUGE.cy, GAUGE.r + 6, GAUGE.from);
     const [oex, oey] = polar(GAUGE.cx, GAUGE.cy, GAUGE.r + 6, end);
     const [iex, iey] = polar(GAUGE.cx, GAUGE.cy, GAUGE.r - 6, end);
@@ -227,7 +230,7 @@
       </div>`;
   }
 
-  /* ------------------------------------------------------------ 判读 */
+  /* ------------------------------------------------------------ verdict */
   function verdicts() {
     const list = [];
     const gpu = S.gpu;
@@ -426,7 +429,7 @@
     tach.attach(root.hero);
   }
 
-  /* ------------------------------------------------------------ 排行榜 */
+  /* ------------------------------------------------------------ leaderboard */
   function sortedProjects() {
     const list = [...(S.projects || [])];
     const key = state.sort;
@@ -573,7 +576,7 @@
         ? T("board.hiddenMore", { count: tiny, min: MIN_LIST_MIB, sum: gib(S.hiddenMiB) })
         : T("board.allListed", { count: S.groupCount })} · ${T("board.total", { value: gib(S.trackedMiB) })}</span>`;
 
-    /* 搜索框内的命中计数 */
+    /* hit count inside the search field */
     if (root.fieldcount) {
       if (query) {
         root.fieldcount.textContent = T("search.hits", { count: list.length });
@@ -585,7 +588,7 @@
     syncField();
   }
 
-  /* ------------------------------------------------------------ 趋势 */
+  /* ------------------------------------------------------------ trend */
   function renderTrend() {
     const history = (S.history || []).slice(-80);
     if (history.length < 2) {
@@ -671,7 +674,7 @@
   }
   function hideTip() { root.tip.hidden = true; }
 
-  /* ------------------------------------------------------------ 工作负载 */
+  /* ------------------------------------------------------------ workload */
   function renderWorkload() {
     const work = S.workloads || {};
     const flow = work.flowedge;
@@ -708,10 +711,10 @@
       <div class="wl">${rows.join("")}</div>`;
   }
 
-  /* ------------------------------------------------------------ 说明 */
+  /* ------------------------------------------------------------ how-to */
   function renderHowto() {
-    /* 命令本身（/vram-radar 后的中文子命令）是技能里的实际触发词，两种语言下都按原样显示，
-       只有说明文字跟着语言走。 */
+    /* The commands themselves (the Chinese sub-commands after /vram-radar) are the real trigger words of the
+       skill, so they are shown verbatim in both languages; only the descriptions follow the language. */
     const card = ({ title, body, items, note }) => `
       <div class="card how">
         <h3>${T(title)}</h3>
@@ -728,10 +731,10 @@
         body: "howto.skill.body",
         items: [
           { cmd: "/vram-radar", desc: "howto.skill.c1" },
-          { cmd: "/vram-radar 榜单", desc: "howto.skill.c2" },
-          { cmd: "/vram-radar 详情 ComfyUI", desc: "howto.skill.c3" },
-          { cmd: "/vram-radar 预算 3200", desc: "howto.skill.c4" },
-          { cmd: "/vram-radar 面板", desc: "howto.skill.c5" }
+          { cmd: T("howto.skill.c2.cmd"), desc: "howto.skill.c2" },
+          { cmd: T("howto.skill.c3.cmd"), desc: "howto.skill.c3" },
+          { cmd: T("howto.skill.c4.cmd"), desc: "howto.skill.c4" },
+          { cmd: T("howto.skill.c5.cmd"), desc: "howto.skill.c5" }
         ]
       }),
       card({
@@ -756,7 +759,7 @@
     ].join("");
   }
 
-  /* ------------------------------------------------------------ 交互 */
+  /* ------------------------------------------------------------ interaction */
   function syncField() {
     if (!root.field) return;
     const has = state.query.length > 0;
@@ -764,7 +767,7 @@
     if (root.fieldclear) root.fieldclear.hidden = !has;
   }
 
-  /* ------------------------------------------------------------ 语言菜单 */
+  /* ------------------------------------------------------------ language menu */
   function bindLangMenu() {
     const button = document.getElementById("langbtn");
     const menu = document.getElementById("langmenu");
@@ -834,7 +837,7 @@
       });
     }
 
-    /* Ctrl/Cmd+K 聚焦搜索，Esc 清空或失焦 */
+    /* Ctrl/Cmd+K focuses the search field; Esc clears it or blurs */
     document.addEventListener("keydown", (event) => {
       const mod = event.ctrlKey || event.metaKey;
       if (mod && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "k") {
@@ -855,7 +858,7 @@
       }
     });
 
-    /* 指针软光：只更新 CSS 变量，rAF 插值跟随，静置后缓落到中心区 */
+    /* pointer glow: only CSS variables are updated, rAF eases the follow, and it drifts back to center when idle */
     if (root.pointerlight && !window.matchMedia("(prefers-reduced-motion:reduce)").matches) {
       const light = root.pointerlight;
       let tx = window.innerWidth * 0.5, ty = window.innerHeight * 0.32;
@@ -996,10 +999,10 @@
     renderWorkload();
   }
 
-  /* ------------------------------------------------------------ 动效相位
-     实时刷新每 3 秒重建一次 DOM，无限循环动画会从 0 重放、看起来像被反复触发。
-     这里把挂钟时间换算成负 animation-delay 写进 :root 变量，新节点继承同一相位，
-     视觉上动画从不中断。 */
+  /* ------------------------------------------------------------ animation phase
+     Live refresh rebuilds the DOM every 3 seconds, so infinite animations would restart from 0 and look
+     like they keep being retriggered. Converting wall-clock time into a negative animation-delay stored in
+     a :root variable lets new nodes inherit the same phase, so nothing ever restarts visually. */
   function syncAmbientPhase() {
     const t = Date.now() / 1000;
     const set = (name, d) => document.documentElement.style.setProperty(name, `${(-(t % d)).toFixed(2)}s`);
@@ -1018,7 +1021,7 @@
     renderHowto();
   }
 
-  /* 实时模式：server.mjs 把新快照写进 __VRAM_SNAPSHOT__ 后 ping 这里 */
+  /* live mode: server.mjs writes a new snapshot into __VRAM_SNAPSHOT__ and then pings this handler */
   window.__VRAM_APPLY__ = (next) => {
     if (!next || typeof next !== "object") return;
     Object.keys(next).forEach((key) => { S[key] = next[key]; });
@@ -1026,13 +1029,13 @@
     render();
   };
 
-  /* 切换语言：i18n 先刷静态节点，这里重绘所有由 JS 生成的区块 */
+  /* language switch: i18n refreshes the static nodes first, then we re-render every JS-generated block */
   I18N.onChange(() => render());
 
   bind();
   render();
 
-  /* 本机实时模式：server.mjs 提供 /api/snapshot；静态托管（file:// 或云端）探测失败就保持快照。 */
+  /* local live mode: server.mjs serves /api/snapshot; if the probe fails under static hosting (file:// or cloud) keep the snapshot. */
   (async () => {
     try {
       const response = await fetch("/api/snapshot", { cache: "no-store" });
@@ -1044,8 +1047,8 @@
         try {
           const next = await fetch("/api/snapshot", { cache: "no-store" });
           if (next.ok) window.__VRAM_APPLY__(await next.json());
-        } catch { /* 掉线就保持上一份快照 */ }
+        } catch { /* keep the previous snapshot if we drop offline */ }
       }, 3000);
-    } catch { /* 静态快照 */ }
+    } catch { /* static snapshot */ }
   })();
 })();
